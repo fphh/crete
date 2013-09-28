@@ -62,9 +62,9 @@ cookieLife :: CookieLife
 cookieLife = MaxAge (60 * 10)
 
 
-checkPassword :: String -> Either LoginError String
-checkPassword "abc123" = Right "bla"
-checkPassword _ = Left InvalidPassword
+--checkPassword :: String -> Either LoginError String
+--checkPassword "abc123" = Right "Ok, you're in!"
+--checkPassword _ = Left InvalidPassword
 
 
 -- newtype ProductFile = ProductFile FilePath deriving (Show)
@@ -73,11 +73,15 @@ checkPassword _ = Left InvalidPassword
 --fileUpload =
 --  ProductFile <$> inputFile <* inputSubmit "Submit"
 
-loginForm :: SimpleForm RoutedServer Login
-loginForm =
-  Login <$> lgin <*  inputSubmit "Submit"
+loginForm :: String -> SimpleForm RoutedServer Login
+loginForm pwd =
+  Login <$> label "Bitte Passwort eingeben   " ++> lgin <*  inputSubmit "Submit"
   where lgin = -- errors listErrors ++> label "Login:" ++>
-               (inputText "" `transformEither` checkPassword)
+               (inputPassword `transformEither` checkPassword)
+        checkPassword str =
+          if str == pwd
+             then Right "Ok, you're in!"
+             else Left InvalidPassword
 
 renderLogin ::
   ( XMLGen m, 
@@ -133,8 +137,10 @@ todoList =
 loginPage :: RoutedServer XML
 loginPage = do
   decodeBody myPolicy
-  let nextpage = form $ urlToStr (WithLang German LoginPage)
-  res <- happstackEitherForm nextpage "fieldId" loginForm
+  config <- ask
+  let pwd = cnfPassword $ cnf config
+      nextpage = form $ slashUrlToStr (WithLang German LoginPage)
+  res <- happstackEitherForm nextpage "fieldId" (loginForm pwd)
   case res of
     (Left formHtml) ->
       Page.template (WithLang German LoginPage) "Verwaltung" formHtml

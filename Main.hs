@@ -118,7 +118,7 @@ routedGetHandle p@(WithLang _ LoadMarkup) = loginHandle $ do
   cm <- liftIO $ getDirectoryContents markupDirectory >>= loadMarkup
   config <- ask
   setContentMap config cm
-  adminTemplate p "files loaded"
+  adminTemplate p "Templates neu geladen ..."
 
 
 {-

@@ -88,7 +88,8 @@ content = do
      --       Noch <b><%qty%> Einheiten</b> verfügbar
           </td>
           <td class="price">
-            <img src=("/img/" ++ picture)/><br/><br/>
+            <a href=("/img/" ++ picture) target="_blank">
+              <img src=("/img/" ++ picture)/></a><br/><br/>
              <% buybutton c prod price %>
             <a href=(mailto email prod)>Eine Anfrage senden</a>
           </td>

@@ -27,8 +27,11 @@ template ::
   Url -> title ->  content -> m (XMLType m)
 template url title content = do
   time <- liftIO $ getCurrentTime
-  cm <- ask >>= getContentMap
-  let menuItems =
+  config <- ask
+  cm <- getContentMap config
+
+  let logo = cnfLogoPic $ cnf config
+      menuItems =
         case map Page (Map.keys cm) of
              [] -> [Products]
              (x:xs) -> x : Products : xs
@@ -51,7 +54,7 @@ template url title content = do
           <td class="logotext"><% title %></td>
           <td class="logopic">
             <a target="_blank" href="http://de.wikipedia.org/wiki/Kreta">
-              <img src="/img/Cretaperif.png"/></a>
+              <img src=("/img/" ++ logo)/></a>
           </td>
         </tr>
       </table>

@@ -1,5 +1,7 @@
 _state
+dist
 versioned
 *.o
 *~
 *.hi
+Main
