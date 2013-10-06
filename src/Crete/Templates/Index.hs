@@ -4,14 +4,16 @@
 module Crete.Templates.Index where
 
 import Control.Monad.Reader (ask)
+import Control.Monad
 
 import qualified Data.Map as Map
+import qualified Data.Text as Text
 
 import Happstack.Server.HSP.HTML
 
 import qualified Crete.Templates.Product as Product
-import qualified Crete.Templates.Impressum as Impressum
 import qualified Crete.Templates.Page as Page
+
 import Crete.Store.Store
 import Crete.Url.Url (Url(..), Sitemap(..))
 import Crete.Type
@@ -20,21 +22,18 @@ import Crete.Type
 
 routed :: Url -> RoutedServer XML
 routed url = do
-  config <- ask
-  let title = cnfPageName $ cnf config
+  title <- askCnf cnfPageName
   content <- chooseContent url
-  Page.template url title content
+  maybe mzero (Page.template url title) content
 
-
-chooseContent :: Url -> RoutedServer XML
+chooseContent :: Url -> RoutedServer (Maybe XML)
 chooseContent (WithLang _ (Page str)) = do
-  config <- ask
-  cm <- getContentMap config
-  let f txt = liftRouted $ unXMLGenT <div class=(str)><% cdata txt %></div>
-  maybe Product.content f (Map.lookup str cm)
+  cm <- ask >>= getContentMap
+  let f txt = unXMLGenT <div class=(str)><% cdata txt %></div>
+  maybe (return Nothing) (fmap Just . f) (Map.lookup str cm)
 
-chooseContent (WithLang _ Products) = Product.content
-chooseContent (WithLang _ Impressum) = Impressum.content
 
-chooseContent _ = liftRouted $ unXMLGenT
-  <div>Keine Inhalte verfügbar.</div>
+chooseContent (WithLang _ (Products ln n)) =
+  fmap Just $ Product.content (Text.unpack ln) n
+
+chooseContent _ = return Nothing

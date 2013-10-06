@@ -1,4 +1,4 @@
-
+{-# LANGUAGE FlexibleContexts #-}
 
 module Crete.Type where
 
@@ -8,6 +8,8 @@ import qualified Data.Map as Map; import Data.Map (Map)
 import Data.Acid
 import Data.Maybe (mapMaybe)
 
+import Control.Concurrent.MVar (MVar, newEmptyMVar)
+
 import Text.ParserCombinators.Parsec (parse)
 
 import Happstack.Server
@@ -16,7 +18,7 @@ import Web.Routes
 
 import Crete.Store.StoreTypes
 import Crete.Url.Url
-import Crete.Utility (trimm)
+import Crete.Utility (trimm, splitItems)
 
 
 import qualified Crete.Product.ProductParser as PP
@@ -47,14 +49,20 @@ data Cnf = Cnf {
   cnfWebpage     :: String,
   cnfPassword    :: String,
   cnfPort        :: Int,
+  cnfChunkSize   :: Int,
   cnfDefaultPage :: String,
   cnfLogoPic     :: String,
   cnfPageName    :: String,
-  cnfProducts    :: String,
+  cnfPages       :: [String],
+  cnfProductPage :: String,
+  cnfSearchPage  :: String,
+  cnfFooters     :: [String],
+  cnfProducts    :: [String],
   cnfPPAddress   :: String,
   cnfPPBusiness  :: String,
   cnfPPCurrency  :: String,
-  cnfPPShipping  :: String } deriving (Show)
+  cnfPPShipping  :: String,
+  cnfMVar        :: MVar () }
 
 
 parseConfigFile :: FilePath -> String -> Map String String
@@ -70,6 +78,7 @@ parseConfigFile file input =
 readConfigFile :: FilePath -> IO Cnf
 readConfigFile file = do
   txt <- readFile file
+  mv <- newEmptyMVar
   let m = parseConfigFile file txt
       getItem str = 
         maybe (error $ "Field " ++ str ++ " is not present in " 
@@ -90,16 +99,25 @@ readConfigFile file = do
       cnfLogoPic     = getItem "logopicture" m,
       cnfPassword    = getItem "password" m,
       cnfPort        = read $ getItem "port" m,
-      cnfProducts    = getItem "products" m,
+      cnfChunkSize   = read $ getItem "chunksize" m,
+      cnfProducts    = splitItems $ getItem "products" m,
+      cnfProductPage = getItem "productpage" m,
+      cnfSearchPage  = getItem "searchpage" m,
+      cnfPages       = splitItems $ getItem "pages" m,
+      cnfFooters     = splitItems $ getItem "footers" m,
       cnfPPAddress   = getItem "paypal_address" m,
       cnfPPBusiness  = getItem "paypal_business" m,
       cnfPPCurrency  = getItem "paypal_currency_code" m,
-      cnfPPShipping  = getItem "paypal_shipping" m }
+      cnfPPShipping  = getItem "paypal_shipping" m,
+      cnfMVar        = mv }
+
+askCnf :: MonadReader Config m => (Cnf -> b) -> m b
+askCnf f = ask >>= return . f . cnf
 
 
-
-data Config = Config { cnf :: Cnf,
-                       acidLoginToken :: AcidState LoginToken,
-                       acidStore :: AcidState StoreState,
-                       acidProducts :: AcidState ProductMap,
-                       acidContent :: AcidState ContentMap }
+data Config =
+  Config { cnf :: Cnf,
+           acidLoginToken :: AcidState LoginToken,
+           acidStore :: AcidState StoreState,
+           acidProducts :: AcidState ProductListMap,
+           acidContent :: AcidState ContentMap }

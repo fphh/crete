@@ -32,8 +32,11 @@ data Product = Product {
      productPrice :: Double } deriving (Eq, Show, Read, Ord, Data, Typeable)
 
 type ProductName = String
+type ListName = String
 
 type ProductMap = Map ProductName Product
+
+type ProductListMap = Map ListName ProductMap
 
 
 type PageName = Text

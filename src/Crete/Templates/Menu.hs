@@ -7,46 +7,95 @@
 
 module Crete.Templates.Menu where
 
-import Happstack.Server.HSP.HTML
+import Control.Monad.Reader
+import Data.Time (getCurrentTime)
 
-import Crete.Url.Url (Lang(..), Sitemap(..), Url(..), urlToStr, translate)
+import Happstack.Server
+--import Happstack.Server.HSP.HTML
+import HSX.XMLGenerator
+
+import Crete.Url.Url (Sitemap(..), Url(..), translate, gePage, geProduct, slashUrlToStr)
+import Crete.Type
 
 import qualified Data.Text as Text
 
 
-footerItems :: [Sitemap]
-footerItems = [Impressum]
+adjustWidth :: [a] -> Int
+adjustWidth = (60 +) . (10 *) . length
 
-footerEnglish :: [Url]
-footerEnglish =  map (WithLang English) footerItems
+dropdownbar :: 
+  (MonadReader Config m, ServerMonad m, Functor m,
+   MonadIO m, XMLGenerator m) =>
+  Url -> m (XMLType m)
+dropdownbar url = do
+  items <- map gePage `fmap` askCnf cnfPages
+  subitems <- map geProduct `fmap` askCnf cnfProducts
+  dp <- askCnf cnfProductPage
+  let isProd (WithLang _ (Page str)) = str == Text.pack dp
+      isProd _ = False
 
-footerGerman :: [Url]
-footerGerman = map (WithLang German) footerItems
+      go (WithLang _ (Products _ _)) thisurl | isProd thisurl =
+               <li class="listmenu" id="active">
+               <% translate thisurl %>
+               <% submenu thisurl %>
+               </li>
+      go u thisurl | u == thisurl =
+               <li class="listmenu" id="active">
+               <% translate thisurl %>
+               <% submenu thisurl %>
+               </li>
+      go _ thisurl | isProd thisurl =
+               <li class="listmenu">
+               <% translate thisurl %>
+               <% submenu thisurl %>
+               </li>
+      go _ thisurl =
+               <li class="listmenu">
+               <a href=(slashUrlToStr thisurl)><% translate thisurl %></a>
+               <% submenu thisurl %>
+               </li>
 
 
-bar :: (XMLGenerator m, EmbedAsChild m String) =>
-  [Url] -> Url -> XMLGenT m [ChildType m]
-bar items url =
-  <%>
-  <table>
-  <tr><% map f items %></tr>
-  </table>
-  </%>
-  where w = (60 +) . (10 *) . length 
-        f thisurl | thisurl == url = 
-          <td id="active" width=(w $ translate thisurl)>
-          <% translate thisurl %></td>
-        f thisurl =
-          <td  width=(w $ translate thisurl)>
-          <a href=("/" ++ (Text.unpack $ urlToStr thisurl))>
-          <% translate thisurl %>
-          </a>
-          </td>
+      submenu u | isProd u =
+        [<ul><% zipWith smitem [0::Int ..] subitems %></ul>]
+      submenu _ = []
 
-header ::
-  (XMLGenerator m) => [Sitemap] -> Url -> XMLGenT m [ChildType m]
-header items url = bar (map (WithLang German) items) url
+      smitem n u = 
+        <li class="listsubmenu" id=("sub" ++ show n)>
+        <div>
+        <a href=(slashUrlToStr u)><% translate u %></a>
+        </div>
+        </li>
 
-footer ::
-  (XMLGenerator m) => Url -> XMLGenT m [ChildType m]
-footer = bar footerGerman
+  unXMLGenT $
+    <div class="dropdownheader">
+    <ul>
+    <% map (go url) items %>
+    </ul>
+    </div>
+
+header :: 
+  (MonadReader Config m, ServerMonad m, Functor m,
+   MonadIO m, XMLGenerator m) =>
+  Url -> m (XMLType m)
+header url = dropdownbar url
+
+
+footer :: 
+  (MonadReader Config m, ServerMonad m, Functor m,
+   MonadIO m, XMLGenerator m) =>
+  m (XMLType m)
+footer = do
+  time <- liftIO $ getCurrentTime
+  items <- map gePage `fmap` askCnf cnfFooters
+  let f thisurl =
+        <td width=(adjustWidth $ translate thisurl)>
+        <a href=(slashUrlToStr thisurl)>
+        <% translate thisurl %></a></td>
+  unXMLGenT $
+    <div class="footer">
+    <table class="footermenu">
+    <tr><% map f items %>
+        <td class="time"><% show time %></td></tr>
+    </table>
+    </div>

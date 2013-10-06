@@ -5,36 +5,25 @@
 
 module Crete.Templates.Page where
 
-import Control.Monad.Trans (liftIO, MonadIO)
-import Control.Monad.Reader (ask, MonadReader)
-
-import Data.Time (getCurrentTime)
-import qualified Data.Map as Map
-
-import Happstack.Server
 import Happstack.Server.HSP.HTML
 
 import qualified Crete.Templates.Menu as Menu
+import qualified Crete.Templates.Search as Search
+
 import Crete.Url.Url
-import Crete.Store.Store
 import Crete.Type
 
 
 template :: 
-  (MonadReader Config m, ServerMonad m,
-   MonadIO m, XMLGenerator m,
-   EmbedAsChild m title, EmbedAsChild m content) =>
-  Url -> title ->  content -> m (XMLType m)
+  (EmbedAsChild RoutedServer title, EmbedAsChild RoutedServer content) =>
+  Url -> title -> content -> RoutedServer (XMLType RoutedServer)
 template url title content = do
-  time <- liftIO $ getCurrentTime
-  config <- ask
-  cm <- getContentMap config
+  logo <- askCnf cnfLogoPic
 
-  let logo = cnfLogoPic $ cnf config
-      menuItems =
-        case map Page (Map.keys cm) of
-             [] -> [Products]
-             (x:xs) -> x : Products : xs
+  header <- Menu.header url
+  search <- Search.content
+  footer <- Menu.footer
+
   unXMLGenT
     <html>
 
@@ -60,21 +49,16 @@ template url title content = do
       </table>
     </div>
 
-    <div class="header">
-      <% Menu.header menuItems url %>
-    </div>
+    <% header %>
+
+    <% search %>
 
     <div class="content">
         <% content %>
     </div>
-    <div class="footer">
-      <table width="100%">
-        <tr>
-          <td><% Menu.footer url %></td>
-          <td class="time"><% show time %></td>
-        </tr>
-      </table>
-    </div>
+
+    <% footer %>
+
     </div>
 
  

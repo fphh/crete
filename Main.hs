@@ -9,6 +9,8 @@ import Control.Monad.Trans (liftIO)
 import Control.Monad.Reader (runReaderT, ask)
 import Control.Exception (bracket)
 import Control.Applicative ((<$>))
+import Control.Concurrent (forkIO)
+import Control.Concurrent.MVar (takeMVar, putMVar)
 
 import Data.Acid (AcidState, IsAcidic)
 import Data.Acid.Local (openLocalStateFrom, createCheckpointAndClose)
@@ -45,21 +47,19 @@ import System.Directory
 myconfigFile :: String
 myconfigFile = "config.csv"
 
-deliverPage :: Url -> RoutedServer XML
-deliverPage =  Index.routed
-
 myPolicy :: BodyPolicy
 myPolicy = (defaultBodyPolicy "/tmp/" 0 1000 1000)
 
 
+defaultPage :: RoutedServer Url
+defaultPage =
+  askCnf cnfDefaultPage >>= return . gePage
+
 goto:: Url -> RoutedServer Response
 goto url = do
-  config <- ask
-  let newPage =
-        cnfWebpage (cnf config) ++ T.unpack (slashUrlToStr url)
+  wp <- askCnf cnfWebpage
+  let newPage = wp ++ slashUrlToStr url
   seeOther newPage (toResponse ())
-
-
 
 loginHandle ::
   RoutedServer XML -> RoutedServer Response
@@ -67,12 +67,14 @@ loginHandle page = msum [
   checkLogin >> page,
   loginPage ] >>= routedOk . toResponse
 
-loadProducts :: RoutedServer ([String], ProductMap)
+loadProducts :: RoutedServer [([String], ProductMap)]
 loadProducts = do
   config <- ask
-  let productFile = csvDirectory ++ "/" ++ cnfProducts (cnf config)
-  txt <- liftIO (readFile productFile)
-  return $ parseProduct productFile txt
+  let name = ((csvDirectory ++ "/") ++) . (++ ".csv")
+      productFiles = map name $ cnfProducts (cnf config)
+      f file txt = parseProduct file txt
+  txts <- liftIO (mapM readFile productFiles)
+  return $ zipWith f productFiles txts
 
 
 loadMarkup :: [String] -> IO ContentMap
@@ -101,24 +103,34 @@ routedGetHandle (WithLang _ LogoutPage) = do
   expireCookie cretetoken
   config <- ask
   deleteLoginToken config
-  goto defaultPage
+  dp <- defaultPage
+  goto dp
 
 routedGetHandle p@(WithLang _ LoadProd) = loginHandle $ do
-  loadProducts >>= adminTemplate p . productList
+  loadProducts >>= adminTemplate p . map productList
+
 
 routedGetHandle p@(WithLang _ PublishProd) = loginHandle $ do
-  loadProducts >>= f
-  where f ([], ps) = do 
-          ask >>= flip setProductMap ps
-          adminTemplate p "Neu Produktliste veröffentlicht"
-        f res = adminTemplate p (productList res)
-
+  config <- ask
+  prods <- loadProducts
+  let pl = cnfProducts $ cnf config
+      (es, ps) = unzip prods
+  case (concat es, ps) of
+       ([], qs) -> do 
+         ask >>= flip setProductListMap (Map.fromList $ zip pl qs)
+         adminTemplate p "Neu Produktliste veröffentlicht"
+       _ -> adminTemplate p "" -- (productList res)
 
 routedGetHandle p@(WithLang _ LoadMarkup) = loginHandle $ do
   cm <- liftIO $ getDirectoryContents markupDirectory >>= loadMarkup
   config <- ask
   setContentMap config cm
   adminTemplate p "Templates neu geladen ..."
+
+routedGetHandle p@(WithLang _ Restart) = loginHandle $ do
+  config <- ask
+  liftIO (putMVar (cnfMVar (cnf config)) ())
+  adminTemplate p "Schluss aus und vorbei ..."
 
 
 {-
@@ -130,9 +142,10 @@ routedGetHandle (WithLang _ PPRedir) = do
   goto $ WithLang German Products
 -}
 
-routedGetHandle url = do
-  txt <- deliverPage url
-  routedOk $ toResponse txt
+routedGetHandle url =
+  Index.routed url >>= routedOk . toResponse
+
+
 
 (>>!) :: Monad m => m () -> m a -> m a
 a >>! b = do { () <- a; b }
@@ -155,21 +168,25 @@ serveFromDir filepath file =
   serveFile (guessContentTypeM mimeTypes) (filepath ++ "/" ++ file)
 
 handlers :: Config -> Server Response
-handlers conf = msum [
+handlers config = msum [
   dir "css" $ uriRest (serveFromDir cssDirectory),
   dir "img" $ uriRest (serveFromDir imgDirectory),
-  -- dir "markup" $ uriRest (serveFromDir "versioned/markup"),
-  homePage conf ]
+  homePage config,
+  seeOther dp (toResponse ()) ]
+  where dp = cnfWebpage (cnf config) ++ "/de/page/"
+             ++ cnfDefaultPage (cnf config)
 
 serve ::
   AcidState LoginToken ->
   AcidState StoreState ->
-  AcidState ProductMap ->
+  AcidState ProductListMap ->
   AcidState ContentMap -> IO ()
-serve token urlm prodmap contentmap = do
+serve token urlm plmap contentmap = do
   c <- liftIO $ readConfigFile $ csvDirectory ++ "/" ++ myconfigFile
-  simpleHTTP (nullConf {port = cnfPort c}) $
-    handlers (Config c token urlm prodmap contentmap)
+  _ <- forkIO 
+       $ simpleHTTP (nullConf {port = cnfPort c})
+       $ handlers (Config c token urlm plmap contentmap)
+  takeMVar (cnfMVar c)
 
 withAcid ::
   (Typeable st, IsAcidic st) => String -> st -> (AcidState st -> IO a) -> IO a
@@ -182,6 +199,6 @@ main :: IO ()
 main =
   withAcid "token" initToken $ \token ->
     withAcid "urlmap" initUrlMap $ \urlm ->
-      withAcid "products" initProductMap $ \prodmap ->
+      withAcid "products" initProductListMap $ \plmap ->
         withAcid "content" initContentMap $ \content ->
-          serve token urlm prodmap content
+          serve token urlm plmap content

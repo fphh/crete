@@ -113,36 +113,38 @@ deleteLoginToken t =
 
 ----------------------------------------------------------------
 
-initProductMap :: ProductMap
-initProductMap = Map.empty
+initProductListMap :: ProductListMap
+initProductListMap = Map.empty
 
 $(deriveSafeCopy 0 'base ''Product)
 
-setProductMap' :: ProductMap -> Update ProductMap ()
-setProductMap' = put
+setProductListMap' :: ProductListMap -> Update ProductListMap ()
+setProductListMap' = put
 
-getProductMap' :: Query ProductMap ProductMap
-getProductMap' = ask
+getProductListMap' :: Query ProductListMap ProductListMap
+getProductListMap' = ask
 
-decrProductMap' :: ProductName -> Update ProductMap ()
-decrProductMap' pn = do
+decrProductListMap' :: ListName -> ProductName -> Update ProductListMap ()
+decrProductListMap' ln pn = do
   m <- get
   let decr p = p { productQuantity = productQuantity p - 1 }
-  put $ Map.adjust decr pn m
+      f x = Map.insert ln (Map.adjust decr pn x) m
+  put $ maybe (error $ "decrProductListMap': Product list \"" ++ ln ++ "\" not found")
+              f (Map.lookup ln m)
+
+$(makeAcidic ''ProductListMap
+             ['getProductListMap', 'setProductListMap', 'decrProductListMap'])
 
 
-$(makeAcidic ''ProductMap ['getProductMap', 'setProductMap', 'decrProductMap'])
+setProductListMap :: (ServerMonad m, MonadIO m) => Config -> ProductListMap -> m ()
+setProductListMap p pm = update' (acidProducts p) (SetProductListMap' pm)
 
-setProductMap :: (ServerMonad m, MonadIO m) => Config -> ProductMap -> m ()
-setProductMap p pm = update' (acidProducts p) (SetProductMap' pm)
+getProductListMap :: (ServerMonad m, MonadIO m) => Config -> m ProductListMap
+getProductListMap p = query' (acidProducts p) GetProductListMap'
 
-getProductMap :: (ServerMonad m, MonadIO m) => Config -> m ProductMap
-getProductMap p = query' (acidProducts p) GetProductMap'
-
-decrProductMap ::
-  (ServerMonad m, MonadIO m) => Config -> ProductName -> m ()
-decrProductMap p pn = update' (acidProducts p) (DecrProductMap' pn)
-
+decrProductListMap ::
+  (ServerMonad m, MonadIO m) => Config -> ListName -> ProductName -> m ()
+decrProductListMap p ln pn = update' (acidProducts p) (DecrProductListMap' ln pn)
 
 
 ----------------------------------------------------------------

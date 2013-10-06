@@ -83,16 +83,6 @@ loginForm pwd =
              then Right "Ok, you're in!"
              else Left InvalidPassword
 
-renderLogin ::
-  ( XMLGen m, 
-    EmbedAsChild m Password,
-    EmbedAsChild m (XMLType m)) =>
-  Login -> XMLGenT m (XMLType m)
-renderLogin (Login pwd) = do
-  <table>
-    <tr><td>mmLogin:</td><td><% pwd %></td></tr>
-  </table>
-
 myPolicy :: BodyPolicy
 myPolicy = (defaultBodyPolicy "/tmp/" 0 1000 1000)
 
@@ -130,6 +120,8 @@ todoList =
     <li><a href=(slashUrlToStr (WithLang German LookToken))>Look token</a></li>
     <li><a href=(slashUrlToStr (WithLang German LoadProd))>Produktliste neu laden</a></li>
     <li><a href=(slashUrlToStr (WithLang German LoadMarkup))>Seiten neu laden</a></li>
+    <li><a href=(slashUrlToStr (WithLang German Restart))>Server neu starten und dabei die Konfiguration neu laden</a></li>
+
     <li><a href=(slashUrlToStr (WithLang German LogoutPage))>Logout</a></li>
 
     </ul>

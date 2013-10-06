@@ -14,24 +14,9 @@ import qualified Data.Map as Map
 import qualified Crete.Product.ProductParser as PP
 
 import Crete.Store.StoreTypes (ProductMap, Product(..))
-import Crete.Utility (trimm)
-
-{-
-checkPrice :: String -> String
-checkPrice str = euro ++ "." ++ reverse cent
-  where rstr = reverse str
-        cent = takeWhile p rstr
-        euro = takeWhile p str
-        p c = c /= '.' && c /= ','
--}
+import Crete.Utility (trimm, readMaybe)
 
 newtype ProductError = ProductError (Maybe [String]) deriving (Show)
-
-readMaybe :: Read a => String -> Maybe a
-readMaybe s =
-  case [x | (x,t) <- reads s, ("","") <- lex t] of
-       [x] -> Just x
-       _ -> Nothing
 
 parseProduct :: FilePath -> String -> ([String], ProductMap)
 parseProduct file input = 
@@ -39,7 +24,7 @@ parseProduct file input =
        Right res ->
          let (ls, rs) = partitionEithers (map f res)
          in (catMaybes ls, Map.fromList rs)
-       Left msg -> (["Irgendwas lief schief! Prüfen Sie das Format Ihrer Produktliste...", show msg], Map.empty)
+       Left msg -> (["Irgendwas lief schief! Prüfen Sie das Format Ihrer Produktlisten ...", show msg], Map.empty)
   where g ',' = '.'
         g x = x
         f xs@[name, qty, desc, pic, unit, price] = 

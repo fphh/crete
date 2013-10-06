@@ -6,14 +6,15 @@ module Crete.Templates.Product where
 import Control.Monad.Reader
 
 import Happstack.Server.HSP.HTML
-import Web.Routes.Happstack -- wird als redundant angezeigt, ist es aber nicht!!!
+import Web.Routes.Happstack ()
 
-import Crete.Store.StoreTypes (Product(..))
-import Crete.Store.Store (getProductMap)
-import Crete.Type (RoutedServer, liftRouted, cnf, Cnf(..))
+import Crete.Store.StoreTypes (Product(..), ListName, ProductName)
+import Crete.Store.Store (getProductListMap)
+import Crete.Type (RoutedServer, liftRouted, cnf, Cnf(..), askCnf, Config)
+import Crete.Url.Url
 
 import qualified Data.Map as Map
-
+import qualified Data.Text as Text
 
 mailto :: String -> String -> String
 mailto email prod =
@@ -71,21 +72,18 @@ buybutton conf prod price =
   </%>
 
 
+outOfStock :: (a, Product) -> Bool
+outOfStock = (0 /=) . productQuantity . snd
 
-content :: RoutedServer XML
-content = do
-  config <- ask
-  prods <- getProductMap config
-  let c = cnf config
-      email = cnfEmail c
-
-      f (prod, Product _ desc picture unit price) = 
+productLine ::
+  (XMLGenerator m) =>
+  String -> Cnf -> (ProductName, Product) -> XMLGenT m (XMLType m)
+productLine  email c (prod, Product _ desc picture unit price) = 
         <tr class="productline">
           <td class="productname"><%prod%></td>
           <td class="description">
             <%desc%><br/><br/>
             <b><%unit%></b> zu <b><% show price %>EUR</b><br/>
-     --       Noch <b><%qty%> Einheiten</b> verfügbar
           </td>
           <td class="price">
             <a href=("/img/" ++ picture) target="_blank">
@@ -95,8 +93,47 @@ content = do
           </td>
         </tr>
 
-  liftRouted $ unXMLGenT
-    <table class="products" rules="rows">
-    <% map f $ filter ((0 /=) . productQuantity . snd) $ Map.toList prods %>
-    </table>
+content :: ListName -> Int -> RoutedServer XML
+content lname n = do
+  config <- ask
+  prods <- getProductListMap config
+  email <- askCnf cnfEmail
+  chunkSize <- askCnf cnfChunkSize
+  let look k =
+        maybe (error $ "content: Missing product list \"" ++ lname ++ "\"")
+              id
+              (Map.lookup k prods)
 
+      lst = Map.toList $ look lname
+      len = length lst
+      cs = len `div` chunkSize
+      r =  len `rem` chunkSize
+      ns = take (if r == 0 then cs else cs+1) $ iterate (+chunkSize) 0
+
+      mkUrl x = slashUrlToStr $ WithLang German (Products (Text.pack lname) x)
+
+      g x | x == n = <td><% show x %></td>
+      g x = <td><a href=(mkUrl x)><% show x %></a></td>
+
+      nexttable =
+        case ns of
+             (_:_:_) ->
+               [ <hr/>,
+                 <center>
+                 <table class="next">
+                 <tr><% map g ns %></tr>
+                 </table>
+                 </center> ]
+             _ -> []
+
+  liftRouted $ unXMLGenT
+    <div>
+    <h1>Produktkategorie <em><% lname %></em></h1>
+    <table class="products" rules="rows">
+    <% map (productLine email (cnf config)) 
+       $ filter outOfStock
+       $ take chunkSize
+       $ drop n lst %>
+    </table>
+    <% nexttable %>
+    </div>
